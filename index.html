@@ -2,94 +2,238 @@
 <html lang="fr">
 <head>
   <meta charset="UTF-8">
-  <title>Lecteur & Modif Excel via Supabase</title>
+  <title>Lecteur Excel en ligne</title>
   <style>
-    body { font-family: Arial; padding: 20px; }
-    table { border-collapse: collapse; width: 100%; margin-top: 10px; }
-    th, td { border: 1px solid #ccc; padding: 8px; }
+    body { font-family: Arial, sans-serif; padding: 20px; background: #f9f9f9; }
+    table { border-collapse: collapse; width: 100%; margin-top: 10px; background: white; }
+    th, td { border: 1px solid #ccc; padding: 8px; min-width: 80px; }
     th { background: #f0f0f0; }
-    input { width: 100%; border: none; }
-    button { margin: 5px 0; padding: 10px; }
+    td:focus { outline: 2px solid #007bff; }
+    .tools { margin-top: 10px; }
+    .tools button { margin-right: 10px; }
+    #notification {
+      position: fixed;
+      top: 20px;
+      right: 20px;
+      background: #4caf50;
+      color: white;
+      padding: 10px 15px;
+      border-radius: 6px;
+      display: none;
+      z-index: 1000;
+    }
+    button {
+      background: #007bff;
+      color: white;
+      padding: 6px 12px;
+      border: none;
+      border-radius: 5px;
+      cursor: pointer;
+    }
+    button:hover {
+      background: #0056b3;
+    }
+    #liste-fichiers a {
+      color: #007bff;
+      text-decoration: none;
+    }
+    #liste-fichiers a:hover {
+      text-decoration: underline;
+    }
   </style>
 </head>
-<body>
+<body onload="listerFichiers()">
 
-  <h1>📂 Excel via Supabase</h1>
+  <h1>📁 Fichiers Excel (édition en ligne)</h1>
 
-  <input type="file" id="fichierExcel" accept=".xls,.xlsx" />
-  <button onclick="upload()">Uploader</button>
+  <button onclick="creerFichierVierge()">➕ Créer un fichier vierge</button>
 
-  <h2>📄 Contenu du fichier</h2>
-  <div id="tableauContainer"></div>
+  <ul id="liste-fichiers"></ul>
 
-  <button onclick="enregistrerModifs()">Enregistrer les modifs</button>
+  <div id="contenu-fichier"></div>
+  <div id="notification"></div>
 
-<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js"></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+  <!-- Librairies -->
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 
-<script>
-  const supabaseUrl = 'https://anlpfdhfqqvddxiewnvk.supabase.co';
-  const supabaseKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImFubHBmZGhmcXF2ZGR4aWV3bnZrIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTA0ODQ0OTUsImV4cCI6MjA2NjA2MDQ5NX0.rcHasM6Ph27QJwWUw3Ja8QqVN1xitDT41efp2VULwVI';
-  const supabase = supabase.createClient(supabaseUrl, supabaseKey);
+  <script>
+    const supabaseUrl = 'https://anlpfdhfqqvddxiewnvk.supabase.co'; // 🔁 Remplace par ton URL Supabase
+    const supabaseKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImFubHBmZGhmcXF2ZGR4aWV3bnZrIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTA0ODQ0OTUsImV4cCI6MjA2NjA2MDQ5NX0.rcHasM6Ph27QJwWUw3Ja8QqVN1xitDT41efp2VULwVI'; // 🔁 Remplace par ta clé anonyme
+    const supabase = supabase.createClient(supabaseUrl, supabaseKey);
 
-  let nomFichierStocke = '';
-  let donneesBrutes = null; // pour stocker la feuille
+    let workbookGlobal = null;
+    let fichierActuel = '';
 
-  async function upload() {
-    const fichierInput = document.getElementById('fichierExcel');
-    const fichier = fichierInput.files[0];
-    if (!fichier) return alert('Sélectionne d\'abord un fichier');
+    function afficherNotification(message, erreur = false) {
+      const notif = document.getElementById('notification');
+      notif.textContent = message;
+      notif.style.background = erreur ? '#f44336' : '#4caf50';
+      notif.style.display = 'block';
+      setTimeout(() => notif.style.display = 'none', 2000);
+    }
 
-    const { error } = await supabase
-      .storage.from('excel-files')
-      .upload('uploads/' + fichier.name, fichier, { upsert: true });
+    async function listerFichiers() {
+      const { data, error } = await supabase
+        .storage.from('excel-files')
+        .list('uploads');
 
-    if (error) return alert('Erreur upload : ' + error.message);
-    nomFichierStocke = 'uploads/' + fichier.name;
-    alert('✅ Fichier uploadé');
-    lireFichier();
-  }
+      const liste = document.getElementById('liste-fichiers');
+      liste.innerHTML = '';
+      data.forEach(fichier => {
+        const li = document.createElement('li');
+        const lien = document.createElement('a');
+        lien.textContent = fichier.name;
+        lien.href = '#';
+        lien.onclick = () => afficherFichier(fichier.name);
+        li.appendChild(lien);
+        liste.appendChild(li);
+      });
+    }
 
-  async function lireFichier() {
-    const { data, error } = await supabase
-      .storage.from('excel-files')
-      .download(nomFichierStocke);
-    if (error) return alert('Erreur lecture : ' + error.message);
+    async function afficherFichier(nomFichier) {
+      fichierActuel = nomFichier;
 
-    const arrayBuffer = await data.arrayBuffer();
-    const wb = XLSX.read(new Uint8Array(arrayBuffer), { type: 'array' });
-    const sheet = wb.Sheets[wb.SheetNames[0]];
-    donneesBrutes = sheet;
-    afficherTable(sheet);
-  }
+      const { data, error } = await supabase
+        .storage.from('excel-files')
+        .download('uploads/' + nomFichier);
 
-  function afficherTable(sheet) {
-    const html = XLSX.utils.sheet_to_html(sheet);
-    document.getElementById('tableauContainer').innerHTML = html;
-  }
+      if (error) {
+        afficherNotification('❌ Erreur téléchargement', true);
+        return;
+      }
 
-  async function enregistrerModifs() {
-    if (!donneesBrutes) return alert('Aucun fichier lu');
+      const buffer = await data.arrayBuffer();
+      const wb = XLSX.read(buffer, { type: 'array' });
+      workbookGlobal = wb;
 
-    // Reconvertit tableau HTML en sheet modifiée
-    const table = document.querySelector('#tableauContainer table');
-    const newSheet = XLSX.utils.table_to_sheet(table);
+      const contenu = document.getElementById('contenu-fichier');
+      contenu.innerHTML = '';
 
-    const wb = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(wb, newSheet, 'Feuille1');
+      wb.SheetNames.forEach(nomFeuille => {
+        const feuille = wb.Sheets[nomFeuille];
+        const html = XLSX.utils.sheet_to_html(feuille, { editable: true });
 
-    const wbout = XLSX.write(wb, { bookType: 'xlsx', type: 'array' });
-    const blob = new Blob([wbout], { type: 'application/octet-stream' });
+        const wrapper = document.createElement('div');
+        wrapper.dataset.sheet = nomFeuille;
 
-    const { error } = await supabase
-      .storage.from('excel-files')
-      .upload(nomFichierStocke, blob, { upsert: true });
+        const titre = document.createElement('h2');
+        titre.textContent = '📄 Feuille : ' + nomFeuille;
 
-    if (error) return alert('Erreur sauvegarde : ' + error.message);
-    alert('✅ Modifications enregistrées');
-    lireFichier(); // re-lire pour refresh
-  }
-</script>
+        const outils = document.createElement('div');
+        outils.className = 'tools';
+        outils.innerHTML = `
+          <button onclick="ajouterLigne(this)">+ Ligne</button>
+          <button onclick="ajouterColonne(this)">+ Colonne</button>
+        `;
+
+        const divTable = document.createElement('div');
+        divTable.innerHTML = html;
+
+        wrapper.appendChild(titre);
+        wrapper.appendChild(outils);
+        wrapper.appendChild(divTable);
+        contenu.appendChild(wrapper);
+      });
+
+      activerAutosave();
+    }
+
+    function activerAutosave() {
+      document.querySelectorAll('table').forEach(table => {
+        table.addEventListener('input', () => {
+          clearTimeout(table.autosaveTimeout);
+          table.autosaveTimeout = setTimeout(() => {
+            enregistrerModifications();
+          }, 800);
+        });
+      });
+    }
+
+    function ajouterLigne(bouton) {
+      const table = bouton.parentElement.nextElementSibling.querySelector('table');
+      const ligne = table.insertRow();
+      for (let i = 0; i < table.rows[0].cells.length; i++) {
+        const cell = ligne.insertCell();
+        cell.contentEditable = true;
+        cell.textContent = '';
+      }
+      enregistrerModifications();
+    }
+
+    function ajouterColonne(bouton) {
+      const table = bouton.parentElement.nextElementSibling.querySelector('table');
+      for (let i = 0; i < table.rows.length; i++) {
+        const cell = table.rows[i].insertCell();
+        cell.contentEditable = true;
+        if (i === 0) cell.outerHTML = `<th contenteditable="true"></th>`;
+      }
+      enregistrerModifications();
+    }
+
+    async function enregistrerModifications() {
+      const divs = document.querySelectorAll('[data-sheet]');
+      divs.forEach(div => {
+        const table = div.querySelector('table');
+        const nomFeuille = div.dataset.sheet;
+        const data = [];
+
+        for (let i = 1; i < table.rows.length; i++) {
+          const row = [];
+          const cells = table.rows[i].cells;
+          for (let j = 0; j < cells.length; j++) {
+            row.push(cells[j].innerText.trim());
+          }
+          data.push(row);
+        }
+
+        const feuille = XLSX.utils.aoa_to_sheet(data);
+        workbookGlobal.Sheets[nomFeuille] = feuille;
+      });
+
+      const fichierXLSX = XLSX.write(workbookGlobal, { bookType: "xlsx", type: "array" });
+      const fichierBlob = new Blob([fichierXLSX], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" });
+
+      const { error } = await supabase
+        .storage.from('excel-files')
+        .upload('uploads/' + fichierActuel, fichierBlob, { upsert: true });
+
+      if (error) {
+        afficherNotification('❌ Erreur sauvegarde', true);
+      } else {
+        afficherNotification('✅ Sauvegardé automatiquement');
+      }
+    }
+
+    async function creerFichierVierge() {
+      const nom = prompt("Nom du nouveau fichier (ex: test.xlsx)").trim();
+      if (!nom.endsWith('.xlsx')) {
+        alert('Ajoute .xlsx à la fin du nom !');
+        return;
+      }
+
+      const wb = XLSX.utils.book_new();
+      const data = [[""]];
+      const ws = XLSX.utils.aoa_to_sheet(data);
+      XLSX.utils.book_append_sheet(wb, ws, "Feuille1");
+
+      const fichier = XLSX.write(wb, { bookType: "xlsx", type: "array" });
+      const blob = new Blob([fichier], {
+        type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+      });
+
+      const { error } = await supabase
+        .storage.from('excel-files')
+        .upload('uploads/' + nom, blob, { upsert: false });
+
+      if (error) {
+        afficherNotification('❌ Erreur création fichier', true);
+      } else {
+        afficherNotification('✅ Fichier vierge créé');
+        listerFichiers();
+      }
+    }
+  </script>
 
 </body>
 </html>
