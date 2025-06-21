@@ -44,6 +44,10 @@
     #liste-fichiers li {
       margin-bottom: 5px;
     }
+    @media (max-width: 600px) {
+  table { font-size: 12px; }
+  td, th { padding: 4px; min-width: 40px; }
+}
   </style>
 </head>
 <body onload="listerFichiers()">
@@ -64,8 +68,8 @@
   <script>
     const supabaseUrl = 'https://anlpfdhfqqvddxiewnvk.supabase.co';
     const supabaseKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImFubHBmZGhmcXF2ZGR4aWV3bnZrIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTA0ODQ0OTUsImV4cCI6MjA2NjA2MDQ5NX0.rcHasM6Ph27QJwWUw3Ja8QqVN1xitDT41efp2VULwVI';
-    const supabase = supabase.createClient(supabaseUrl, supabaseKey);
-
+    const supabase = supabase.createClient(supabaseUrl, supabaseKey, {fetch: fetch});
+    
     let workbookGlobal = null;
     let fichierActuel = '';
 
@@ -77,6 +81,19 @@
       setTimeout(() => notif.style.display = 'none', 2000);
     }
 
+    // Utilisez cette fonction pour vérifier le support mobile
+async function isMobileSupported() {
+  try {
+    const testBlob = new Blob(['test'], { type: 'text/plain' });
+    await supabase.storage
+      .from('excel-files')
+      .upload('uploads/test.txt', testBlob);
+    return true;
+  } catch (e) {
+    console.error("Mobile non supporté:", e);
+    return false;
+  }
+}
     async function listerFichiers() {
       try {
         const { data, error } = await supabase
