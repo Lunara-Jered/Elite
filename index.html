@@ -36,9 +36,13 @@
     #liste-fichiers a {
       color: #007bff;
       text-decoration: none;
+      margin-right: 10px;
     }
     #liste-fichiers a:hover {
       text-decoration: underline;
+    }
+    #liste-fichiers li {
+      margin-bottom: 5px;
     }
   </style>
 </head>
@@ -54,12 +58,12 @@
   <div id="notification"></div>
 
   <!-- Librairies -->
-  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 
   <script>
-    const supabaseUrl = 'https://anlpfdhfqqvddxiewnvk.supabase.co'; // 🔁 Remplace par ton URL Supabase
-    const supabaseKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImFubHBmZGhmcXF2ZGR4aWV3bnZrIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTA0ODQ0OTUsImV4cCI6MjA2NjA2MDQ5NX0.rcHasM6Ph27QJwWUw3Ja8QqVN1xitDT41efp2VULwVI'; // 🔁 Remplace par ta clé anonyme
+    const supabaseUrl = 'https://anlpfdhfqqvddxiewnvk.supabase.co';
+    const supabaseKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImFubHBmZGhmcXF2ZGR4aWV3bnZrIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTA0ODQ0OTUsImV4cCI6MjA2NjA2MDQ5NX0.rcHasM6Ph27QJwWUw3Ja8QqVN1xitDT41efp2VULwVI';
     const supabase = supabase.createClient(supabaseUrl, supabaseKey);
 
     let workbookGlobal = null;
@@ -74,69 +78,101 @@
     }
 
     async function listerFichiers() {
-      const { data, error } = await supabase
-        .storage.from('excel-files')
-        .list('uploads');
+      try {
+        const { data, error } = await supabase
+          .storage
+          .from('excel-files')
+          .list('uploads');
 
-      const liste = document.getElementById('liste-fichiers');
-      liste.innerHTML = '';
-      data.forEach(fichier => {
-        const li = document.createElement('li');
-        const lien = document.createElement('a');
-        lien.textContent = fichier.name;
-        lien.href = '#';
-        lien.onclick = () => afficherFichier(fichier.name);
-        li.appendChild(lien);
-        liste.appendChild(li);
-      });
+        if (error) throw error;
+
+        const liste = document.getElementById('liste-fichiers');
+        liste.innerHTML = '';
+        
+        if (data && data.length > 0) {
+          data.forEach(fichier => {
+            const li = document.createElement('li');
+            const lien = document.createElement('a');
+            lien.textContent = fichier.name;
+            lien.href = '#';
+            lien.onclick = () => afficherFichier(fichier.name);
+            
+            const btnSuppr = document.createElement('button');
+            btnSuppr.textContent = '🗑️';
+            btnSuppr.onclick = (e) => {
+              e.preventDefault();
+              supprimerFichier(fichier.name);
+            };
+            
+            li.appendChild(lien);
+            li.appendChild(btnSuppr);
+            liste.appendChild(li);
+          });
+        } else {
+          liste.innerHTML = '<li>Aucun fichier trouvé</li>';
+        }
+      } catch (error) {
+        afficherNotification('❌ Erreur liste fichiers', true);
+        console.error(error);
+      }
     }
 
     async function afficherFichier(nomFichier) {
-      fichierActuel = nomFichier;
+      try {
+        fichierActuel = nomFichier;
 
-      const { data, error } = await supabase
-        .storage.from('excel-files')
-        .download('uploads/' + nomFichier);
+        const { data, error } = await supabase
+          .storage
+          .from('excel-files')
+          .download('uploads/' + nomFichier);
 
-      if (error) {
-        afficherNotification('❌ Erreur téléchargement', true);
-        return;
+        if (error) throw error;
+
+        const buffer = await data.arrayBuffer();
+        const wb = XLSX.read(buffer, { type: 'array' });
+        workbookGlobal = wb;
+
+        const contenu = document.getElementById('contenu-fichier');
+        contenu.innerHTML = '';
+
+        wb.SheetNames.forEach(nomFeuille => {
+          const feuille = wb.Sheets[nomFeuille];
+          const html = XLSX.utils.sheet_to_html(feuille, { editable: true });
+
+          const wrapper = document.createElement('div');
+          wrapper.dataset.sheet = nomFeuille;
+
+          const titre = document.createElement('h2');
+          titre.textContent = '📄 Feuille : ' + nomFeuille;
+
+          const outils = document.createElement('div');
+          outils.className = 'tools';
+          
+          const btnLigne = document.createElement('button');
+          btnLigne.textContent = '+ Ligne';
+          btnLigne.onclick = () => ajouterLigne(wrapper);
+          
+          const btnColonne = document.createElement('button');
+          btnColonne.textContent = '+ Colonne';
+          btnColonne.onclick = () => ajouterColonne(wrapper);
+          
+          outils.appendChild(btnLigne);
+          outils.appendChild(btnColonne);
+
+          const divTable = document.createElement('div');
+          divTable.innerHTML = html;
+
+          wrapper.appendChild(titre);
+          wrapper.appendChild(outils);
+          wrapper.appendChild(divTable);
+          contenu.appendChild(wrapper);
+        });
+
+        activerAutosave();
+      } catch (error) {
+        afficherNotification('❌ Erreur affichage fichier', true);
+        console.error(error);
       }
-
-      const buffer = await data.arrayBuffer();
-      const wb = XLSX.read(buffer, { type: 'array' });
-      workbookGlobal = wb;
-
-      const contenu = document.getElementById('contenu-fichier');
-      contenu.innerHTML = '';
-
-      wb.SheetNames.forEach(nomFeuille => {
-        const feuille = wb.Sheets[nomFeuille];
-        const html = XLSX.utils.sheet_to_html(feuille, { editable: true });
-
-        const wrapper = document.createElement('div');
-        wrapper.dataset.sheet = nomFeuille;
-
-        const titre = document.createElement('h2');
-        titre.textContent = '📄 Feuille : ' + nomFeuille;
-
-        const outils = document.createElement('div');
-        outils.className = 'tools';
-        outils.innerHTML = `
-          <button onclick="ajouterLigne(this)">+ Ligne</button>
-          <button onclick="ajouterColonne(this)">+ Colonne</button>
-        `;
-
-        const divTable = document.createElement('div');
-        divTable.innerHTML = html;
-
-        wrapper.appendChild(titre);
-        wrapper.appendChild(outils);
-        wrapper.appendChild(divTable);
-        contenu.appendChild(wrapper);
-      });
-
-      activerAutosave();
     }
 
     function activerAutosave() {
@@ -150,10 +186,12 @@
       });
     }
 
-    function ajouterLigne(bouton) {
-      const table = bouton.parentElement.nextElementSibling.querySelector('table');
+    function ajouterLigne(wrapper) {
+      const table = wrapper.querySelector('table');
       const ligne = table.insertRow();
-      for (let i = 0; i < table.rows[0].cells.length; i++) {
+      const colsCount = table.rows[0].cells.length;
+      
+      for (let i = 0; i < colsCount; i++) {
         const cell = ligne.insertCell();
         cell.contentEditable = true;
         cell.textContent = '';
@@ -161,9 +199,11 @@
       enregistrerModifications();
     }
 
-    function ajouterColonne(bouton) {
-      const table = bouton.parentElement.nextElementSibling.querySelector('table');
-      for (let i = 0; i < table.rows.length; i++) {
+    function ajouterColonne(wrapper) {
+      const table = wrapper.querySelector('table');
+      const rowsCount = table.rows.length;
+      
+      for (let i = 0; i < rowsCount; i++) {
         const cell = table.rows[i].insertCell();
         cell.contentEditable = true;
         if (i === 0) cell.outerHTML = `<th contenteditable="true"></th>`;
@@ -172,68 +212,111 @@
     }
 
     async function enregistrerModifications() {
-      const divs = document.querySelectorAll('[data-sheet]');
-      divs.forEach(div => {
-        const table = div.querySelector('table');
-        const nomFeuille = div.dataset.sheet;
-        const data = [];
+      try {
+        const divs = document.querySelectorAll('[data-sheet]');
+        
+        divs.forEach(div => {
+          const table = div.querySelector('table');
+          const nomFeuille = div.dataset.sheet;
+          const data = [];
 
-        for (let i = 1; i < table.rows.length; i++) {
-          const row = [];
-          const cells = table.rows[i].cells;
-          for (let j = 0; j < cells.length; j++) {
-            row.push(cells[j].innerText.trim());
+          // Récupérer les en-têtes
+          const headers = [];
+          const headerCells = table.rows[0].cells;
+          for (let j = 0; j < headerCells.length; j++) {
+            headers.push(headerCells[j].innerText.trim());
           }
-          data.push(row);
-        }
+          data.push(headers);
 
-        const feuille = XLSX.utils.aoa_to_sheet(data);
-        workbookGlobal.Sheets[nomFeuille] = feuille;
-      });
+          // Récupérer les données
+          for (let i = 1; i < table.rows.length; i++) {
+            const row = [];
+            const cells = table.rows[i].cells;
+            for (let j = 0; j < cells.length; j++) {
+              row.push(cells[j].innerText.trim());
+            }
+            data.push(row);
+          }
 
-      const fichierXLSX = XLSX.write(workbookGlobal, { bookType: "xlsx", type: "array" });
-      const fichierBlob = new Blob([fichierXLSX], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" });
+          const feuille = XLSX.utils.aoa_to_sheet(data);
+          workbookGlobal.Sheets[nomFeuille] = feuille;
+        });
 
-      const { error } = await supabase
-        .storage.from('excel-files')
-        .upload('uploads/' + fichierActuel, fichierBlob, { upsert: true });
+        const fichierXLSX = XLSX.write(workbookGlobal, { bookType: "xlsx", type: "array" });
+        const fichierBlob = new Blob([fichierXLSX], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" });
 
-      if (error) {
-        afficherNotification('❌ Erreur sauvegarde', true);
-      } else {
+        const { error } = await supabase
+          .storage
+          .from('excel-files')
+          .upload('uploads/' + fichierActuel, fichierBlob, { upsert: true });
+
+        if (error) throw error;
+        
         afficherNotification('✅ Sauvegardé automatiquement');
+      } catch (error) {
+        afficherNotification('❌ Erreur sauvegarde', true);
+        console.error(error);
       }
     }
 
     async function creerFichierVierge() {
-      const nom = prompt("Nom du nouveau fichier (ex: test.xlsx)").trim();
-      if (!nom.endsWith('.xlsx')) {
-        alert('Ajoute .xlsx à la fin du nom !');
-        return;
-      }
+      try {
+        const nom = prompt("Nom du nouveau fichier (ex: test.xlsx)");
+        if (!nom) return;
+        
+        const nomFichier = nom.trim();
+        if (!nomFichier.endsWith('.xlsx')) {
+          alert('Le nom doit se terminer par .xlsx');
+          return;
+        }
 
-      const wb = XLSX.utils.book_new();
-      const data = [[""]];
-      const ws = XLSX.utils.aoa_to_sheet(data);
-      XLSX.utils.book_append_sheet(wb, ws, "Feuille1");
+        const wb = XLSX.utils.book_new();
+        const ws = XLSX.utils.aoa_to_sheet([[""]]);
+        XLSX.utils.book_append_sheet(wb, ws, "Feuille1");
 
-      const fichier = XLSX.write(wb, { bookType: "xlsx", type: "array" });
-      const blob = new Blob([fichier], {
-        type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-      });
+        const fichier = XLSX.write(wb, { bookType: "xlsx", type: "array" });
+        const blob = new Blob([fichier], {
+          type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+        });
 
-      const { error } = await supabase
-        .storage.from('excel-files')
-        .upload('uploads/' + nom, blob, { upsert: false });
+        const { error } = await supabase
+          .storage
+          .from('excel-files')
+          .upload('uploads/' + nomFichier, blob);
 
-      if (error) {
-        afficherNotification('❌ Erreur création fichier', true);
-      } else {
-        afficherNotification('✅ Fichier vierge créé');
+        if (error) throw error;
+        
+        afficherNotification('✅ Fichier créé');
         listerFichiers();
+        afficherFichier(nomFichier);
+      } catch (error) {
+        afficherNotification('❌ Erreur création fichier', true);
+        console.error(error);
+      }
+    }
+
+    async function supprimerFichier(nomFichier) {
+      try {
+        if (!confirm(`Supprimer définitivement ${nomFichier} ?`)) return;
+        
+        const { error } = await supabase
+          .storage
+          .from('excel-files')
+          .remove(['uploads/' + nomFichier]);
+
+        if (error) throw error;
+        
+        afficherNotification('✅ Fichier supprimé');
+        if (fichierActuel === nomFichier) {
+          document.getElementById('contenu-fichier').innerHTML = '';
+          fichierActuel = '';
+        }
+        listerFichiers();
+      } catch (error) {
+        afficherNotification('❌ Erreur suppression', true);
+        console.error(error);
       }
     }
   </script>
-
 </body>
 </html>
