@@ -2,15 +2,94 @@
 <html lang="fr">
 <head>
   <meta charset="UTF-8">
-  <title>Uploader un fichier Excel</title>
+  <title>Lecteur & Modif Excel via Supabase</title>
+  <style>
+    body { font-family: Arial; padding: 20px; }
+    table { border-collapse: collapse; width: 100%; margin-top: 10px; }
+    th, td { border: 1px solid #ccc; padding: 8px; }
+    th { background: #f0f0f0; }
+    input { width: 100%; border: none; }
+    button { margin: 5px 0; padding: 10px; }
+  </style>
 </head>
 <body>
 
-  <h2>Uploader un fichier Excel</h2>
-  <form action="upload.php" method="POST" enctype="multipart/form-data">
-    <input type="file" name="fichierExcel" accept=".xls,.xlsx" required />
-    <button type="submit">Envoyer</button>
-  </form>
+  <h1>📂 Excel via Supabase</h1>
+
+  <input type="file" id="fichierExcel" accept=".xls,.xlsx" />
+  <button onclick="upload()">Uploader</button>
+
+  <h2>📄 Contenu du fichier</h2>
+  <div id="tableauContainer"></div>
+
+  <button onclick="enregistrerModifs()">Enregistrer les modifs</button>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+
+<script>
+  const supabaseUrl = 'https://anlpfdhfqqvddxiewnvk.supabase.co';
+  const supabaseKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImFubHBmZGhmcXF2ZGR4aWV3bnZrIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTA0ODQ0OTUsImV4cCI6MjA2NjA2MDQ5NX0.rcHasM6Ph27QJwWUw3Ja8QqVN1xitDT41efp2VULwVI';
+  const supabase = supabase.createClient(supabaseUrl, supabaseKey);
+
+  let nomFichierStocke = '';
+  let donneesBrutes = null; // pour stocker la feuille
+
+  async function upload() {
+    const fichierInput = document.getElementById('fichierExcel');
+    const fichier = fichierInput.files[0];
+    if (!fichier) return alert('Sélectionne d\'abord un fichier');
+
+    const { error } = await supabase
+      .storage.from('excel-files')
+      .upload('uploads/' + fichier.name, fichier, { upsert: true });
+
+    if (error) return alert('Erreur upload : ' + error.message);
+    nomFichierStocke = 'uploads/' + fichier.name;
+    alert('✅ Fichier uploadé');
+    lireFichier();
+  }
+
+  async function lireFichier() {
+    const { data, error } = await supabase
+      .storage.from('excel-files')
+      .download(nomFichierStocke);
+    if (error) return alert('Erreur lecture : ' + error.message);
+
+    const arrayBuffer = await data.arrayBuffer();
+    const wb = XLSX.read(new Uint8Array(arrayBuffer), { type: 'array' });
+    const sheet = wb.Sheets[wb.SheetNames[0]];
+    donneesBrutes = sheet;
+    afficherTable(sheet);
+  }
+
+  function afficherTable(sheet) {
+    const html = XLSX.utils.sheet_to_html(sheet);
+    document.getElementById('tableauContainer').innerHTML = html;
+  }
+
+  async function enregistrerModifs() {
+    if (!donneesBrutes) return alert('Aucun fichier lu');
+
+    // Reconvertit tableau HTML en sheet modifiée
+    const table = document.querySelector('#tableauContainer table');
+    const newSheet = XLSX.utils.table_to_sheet(table);
+
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, newSheet, 'Feuille1');
+
+    const wbout = XLSX.write(wb, { bookType: 'xlsx', type: 'array' });
+    const blob = new Blob([wbout], { type: 'application/octet-stream' });
+
+    const { error } = await supabase
+      .storage.from('excel-files')
+      .upload(nomFichierStocke, blob, { upsert: true });
+
+    if (error) return alert('Erreur sauvegarde : ' + error.message);
+    alert('✅ Modifications enregistrées');
+    lireFichier(); // re-lire pour refresh
+  }
+</script>
 
 </body>
 </html>
