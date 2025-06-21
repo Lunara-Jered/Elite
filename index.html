@@ -2,95 +2,61 @@
 <html lang="fr">
 <head>
   <meta charset="UTF-8">
-  <title>Générateur Excel</title>
+  <title>Lecteur de fichier Excel</title>
   <style>
     body {
       font-family: Arial, sans-serif;
       padding: 20px;
     }
+    h1 {
+      color: #2c3e50;
+    }
+    input[type="file"] {
+      margin: 20px 0;
+    }
     table {
-      border-collapse: collapse;
       width: 100%;
-      margin-bottom: 20px;
+      border-collapse: collapse;
+      margin-top: 20px;
     }
     th, td {
-      border: 1px solid #aaa;
+      border: 1px solid #ccc;
       padding: 8px;
       text-align: left;
     }
-    input {
-      width: 100%;
-      border: none;
-      padding: 6px;
-    }
-    button {
-      padding: 10px 15px;
-      margin-right: 10px;
-      cursor: pointer;
+    th {
+      background-color: #f1f1f1;
     }
   </style>
 </head>
 <body>
 
-  <h2>Tableau de données</h2>
-  <table id="tableau">
-    <thead>
-      <tr>
-        <th>Nom</th>
-        <th>Email</th>
-        <th>Action</th>
-      </tr>
-    </thead>
-    <tbody>
-      <tr>
-        <td><input type="text" placeholder="Nom"></td>
-        <td><input type="email" placeholder="Email"></td>
-        <td><button onclick="supprimerLigne(this)">Supprimer</button></td>
-      </tr>
-    </tbody>
-  </table>
+  <h1>📄 Lecteur de fichier Excel</h1>
+  <input type="file" id="fichierExcel" accept=".xls,.xlsx" />
+  <div id="contenuExcel"></div>
 
-  <button onclick="ajouterLigne()">Ajouter une ligne</button>
-  <button onclick="exporterExcel()">Exporter en Excel</button>
-
-  <!-- SheetJS -->
+  <!-- Bibliothèque SheetJS (XLSX) -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
   <script>
-    function ajouterLigne() {
-      const tableau = document.getElementById("tableau").getElementsByTagName('tbody')[0];
-      const ligne = tableau.insertRow();
+    document.getElementById('fichierExcel').addEventListener('change', function(e) {
+      const fichier = e.target.files[0];
+      if (!fichier) return;
 
-      const cellNom = ligne.insertCell(0);
-      const cellEmail = ligne.insertCell(1);
-      const cellAction = ligne.insertCell(2);
+      const lecteur = new FileReader();
+      lecteur.onload = function(e) {
+        const donnees = new Uint8Array(e.target.result);
+        const classeur = XLSX.read(donnees, { type: 'array' });
 
-      cellNom.innerHTML = '<input type="text" placeholder="Nom">';
-      cellEmail.innerHTML = '<input type="email" placeholder="Email">';
-      cellAction.innerHTML = '<button onclick="supprimerLigne(this)">Supprimer</button>';
-    }
+        const nomFeuille = classeur.SheetNames[0]; // Prend la première feuille
+        const feuille = classeur.Sheets[nomFeuille];
 
-    function supprimerLigne(bouton) {
-      const ligne = bouton.parentNode.parentNode;
-      ligne.parentNode.removeChild(ligne);
-    }
+        // Convertit en HTML
+        const html = XLSX.utils.sheet_to_html(feuille);
+        document.getElementById('contenuExcel').innerHTML = html;
+      };
 
-    function exporterExcel() {
-      const tableau = document.getElementById("tableau");
-      const lignes = tableau.getElementsByTagName("tbody")[0].rows;
-
-      const donnees = [["Nom", "Email"]]; // En-têtes
-
-      for (let i = 0; i < lignes.length; i++) {
-        const nom = lignes[i].cells[0].querySelector("input").value;
-        const email = lignes[i].cells[1].querySelector("input").value;
-        donnees.push([nom, email]);
-      }
-
-      const feuille = XLSX.utils.aoa_to_sheet(donnees);
-      const classeur = XLSX.utils.book_new();
-      XLSX.utils.book_append_sheet(classeur, feuille, "Données");
-      XLSX.writeFile(classeur, "donnees_utilisateurs.xlsx");
-    }
+      lecteur.readAsArrayBuffer(fichier);
+    });
   </script>
 
 </body>
